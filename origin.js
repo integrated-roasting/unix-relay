@@ -1,3 +1,5 @@
+#! /usr/bin/node
+
 const WebSocket = require('ws'),
       net = require('net'),
       host = process.argv[2],
