@@ -136,15 +136,17 @@ envvar, and use it to authenticate with something.
 
 # Roadmap
 
+- Auth token validation should be controlled by _origin_, not shared
+  directly with _relay_.
 - Allow up to N total connections per session, controlled by the _origin_.
 - Allow up to N simultaneous connections, controlled by the _origin_.
 - Allow specifying destination host whitelist, controlled by the _origin_.
-  - Relies on _relay_ faithfully reporting client ip.
-    - is there a way to guard against this?
+  - Relies at least on _relay_ remaining trustworthy.
 - Support client-side stream cypher?
   - Help prevent malicious or compromised _relay_ from hijacking client
-    sessions, since symetric key wouldn't be shared with server.
+    sessions, since symetric key wouldn't be (directly) shared with server.
 - Support listening on separate ports for _origin_ and _destination_ clients.
   - Allows _relay_ administrators to employ more restrictive routing
     rules for _destination_ clients, such as whitelisting based on ip.
 - Add ssl support.
+- Support passing parameters in file or via stdin.

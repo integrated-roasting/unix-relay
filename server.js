@@ -61,9 +61,9 @@ class RelaySession {
   }
 }
 
-class ProxyServer {
+class RelayServer {
   constructor (ws_server) {
-    this.connections = {};
+    this.sessions = {};
     ws_server.on('connection', this.newConnection.bind(this));
   }
 
@@ -84,11 +84,11 @@ class ProxyServer {
 
   newOriginConnection(socket, params) {
     const uid = uuid4(),
-          conn = new ProxyConnection(socket, params.token);
+          session = new RelaySession(socket, params.token);
 
     console.log("Creating new connection:", uid);
 
-    this.connections[uid] = conn;
+    this.sessions[uid] = session;
 
     socket.send(uid);
   }
@@ -96,21 +96,15 @@ class ProxyServer {
   newDestConnection(socket, params) {
     const uid = params.id,
           token = params.token,
-          maybe_conn = this.connections[uid];
+          maybe_session = this.sessions[uid];
     if (maybe_conn) {
-      const conn = maybe_conn;
-      /* if (conn.running()) {
-       *   console.log("Connection already completed: ", uid);
-       *   socket.close();
-       * }
-       */
-      if (conn.token != token) {
+      const session = maybe_session;
+      if (session.token != token) {
         console.log("Invalid token for socket: ", uid);
         socket.close();
       }
-
       console.log("Forwarding for connection:", uid);
-      conn.startForwarding(socket);
+      session.startForwarding(socket);
     } else {
       console.log("Invalid socket id: ", uid);
       socket.close();
