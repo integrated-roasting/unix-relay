@@ -1,0 +1,16 @@
+{
+  "name": "auth_sock_proxy",
+  "version": "1.0.0",
+  "description": "Clients and server for proxying ssh_auth_socket across network.",
+  "main": "server.js",
+  "scripts": {
+    "test": "test.js",
+    "start": "node server.js"
+  },
+  "author": "Carbine Coffee, Inc.",
+  "license": "MIT",
+  "dependencies": {
+    "uuid": "^3.2.1",
+    "ws": "^5.1.1"
+  }
+}
