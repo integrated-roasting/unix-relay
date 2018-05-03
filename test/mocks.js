@@ -124,6 +124,10 @@ class File extends EventEmitter {
     this.emit('write', data);
   }
 
+  close() {
+    this.mockClose();
+  }
+
   mockOpen() {
     this.open = true;
     this.emit('open');
@@ -132,6 +136,9 @@ class File extends EventEmitter {
   mockClose() {
     if (this.open) {
       this.emit('close');
+      this.open = false;
+    } else {
+      console.trace("Already closed");
     }
   }
 
@@ -168,15 +175,16 @@ class Server extends EventEmitter {
   }
 
   listen(path, listen_cb) {
+    this.path = path;
     this.listen_cb = listen_cb;
   }
 
-  mockOpenSocket(unix_socket, req) {
+  mockOpenSocket(socket, req) {
     // For websocket server
-    this.emit('connection', unix_socket, req);
+    this.emit('connection', socket, req);
 
     // For unix socket server
-    this.listener && this.listener(unix_socket);
+    this.listener && this.listener(socket);
   }
 
   mockError(err) {

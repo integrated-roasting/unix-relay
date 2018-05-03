@@ -35,21 +35,24 @@ const WebSocket = require('ws'),
       url = `ws://${host}:${port}?mode=dest&id=${id}&token=${token}`;
 
 class DestClient {
-  constructor(path) {
+  constructor(path, web_socket, createServer, token) {
     this.sockets = {};
     this.path = path;
+    this.createServer = createServer;
+    this.token = token;
 
-    this.web_socket = new WebSocket(url);
+    this.web_socket = web_socket;
     this.web_socket.on('open', () => this.createUnixSocket(this.path));
     this.web_socket.on('close', () => {
       throw new Error("Remote host closed connection");
     });
+    this.web_socket.on('message', (data) => this.onMessage(data));
   }
 
   createUnixSocket(path) {
     console.log("Websocket connected, opening unix socket");
 
-    this.server = net.createServer((sock) => this.onUnixConnection(sock));
+    this.server = this.createServer((sock) => this.onUnixConnection(sock));
     this.server.on('error', console.error.bind(console));
     this.server.listen(path, () => {
       console.log(`server bound to: ${this.server.address()}`);
@@ -65,10 +68,12 @@ class DestClient {
     console.log("New unix socket opened:", uid);
 
     this.sockets[uid] = unix_socket;
-    this.send({type: "open", id: uid, token});
+    this.send({type: "open", id: uid, token: this.token});
 
     unix_socket.on('data', (data) => this.onUnixData(data, uid));
-    unix_socket.on('end', (uid) => this.closeSocket(uid));
+    unix_socket.on('end',   () => this.closeSocket(uid, true));
+    unix_socket.on('error', () => this.closeSocket(uid, true));
+    unix_socket.on('close', () => this.closeSocket(uid, true));
   }
 
   onMessage(data) {
@@ -78,10 +83,10 @@ class DestClient {
 
     switch (decoded.type) {
       case "close":
-        this.closeSocket(decoded.uid);
+        this.closeSocket(decoded.id, false);
         break;
       case "data":
-        this.onWebSocketData(decoded.data, decoded.uid);
+        this.onWebSocketData(decoded.data, decoded.id);
         break;
     }
   }
@@ -105,13 +110,27 @@ class DestClient {
     }
   }
 
-  closeSocket(id) {
-    this.send({type: "close", id});
-    delete this.sockets[id];
+  closeSocket(id, ack) {
+    console.log("XXX:", ack);
+    const maybe_socket = this.sockets[id];
+
+    if (maybe_socket) {
+      if (ack) {
+        this.send({type: "close", id});
+      }
+      delete this.sockets[id];
+      maybe_socket.close();
+    }
   }
 }
 
 // Entry point for script.
 if (!module.parent) {
-  const client = new DestClient(local_unix);
+  const client = new DestClient(
+    local_unix,
+    new WebSocket(url),
+    new net.createServer,
+    token);
+} else {
+  module.exports = {DestClient};
 }
