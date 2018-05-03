@@ -24,11 +24,11 @@
  */
 
 const  http = require('http'),
+       msgpack = require('msgpack-lite'),
        url = require('url'),
        uuid4 = require('uuid/v4'),
        ws = require('ws'),
-       port = process.env.HTTP_PORT || 80,
-       ws_server = new ws.Server({port});
+       port = process.env.HTTP_PORT || 80;
 
 class RelaySession {
   constructor (origin, token) {
@@ -38,22 +38,18 @@ class RelaySession {
 
   startForwarding(dest) {
     this.dest = dest;
-
     this.origin.on('message', (data) => dest.send(data));
-    this.origin.on('close', () => this.shutdown);
-    this.origin.on('error', () => this.shutdown);
-
     this.dest.on('message', (data) => this.origin.send(data));
-    this.dest.on('close', () => this.shutdown);
-    this.dest.on('error', () => this.shutdown);
-
-    this.origin.send('start');
   }
 
   shutdown() {
-    console.log("Shutdown called");
-    this.dest.close();
-    this.origin.close();
+    if (this.dest && this.dest.readyState === "OPEN") {
+      this.dest.close();
+    }
+
+    if (this.origin.readyState === "OPEN") {
+      this.origin.close();
+    }
   }
 
   running() {
@@ -69,8 +65,6 @@ class RelayServer {
 
   newConnection(socket, req) {
     const location = url.parse(req.url, true);
-
-    console.log(location.query);
 
     switch(location.query.mode) {
       case "origin":
@@ -90,26 +84,48 @@ class RelayServer {
 
     this.sessions[uid] = session;
 
-    socket.send(uid);
+    // Notify origin client of session id.
+    socket.send(msgpack.encode({type: "start", id: uid}));
+
+    // Handle socket closing.
+    socket.on('close', () => this.originClosed(uid));
+    socket.on('error', () => this.originClosed(uid));
   }
 
   newDestConnection(socket, params) {
     const uid = params.id,
           token = params.token,
           maybe_session = this.sessions[uid];
-    if (maybe_conn) {
+    if (maybe_session) {
       const session = maybe_session;
       if (session.token != token) {
-        console.log("Invalid token for socket: ", uid);
+        console.error("Invalid token for socket: ", uid);
         socket.close();
       }
-      console.log("Forwarding for connection:", uid);
+      console.error("Forwarding for connection:", uid);
       session.startForwarding(socket);
+      socket.on('close', () => session.shutdown());
+      socket.on('error', () => session.shutdown());
     } else {
-      console.log("Invalid socket id: ", uid);
+      console.error("Invalid socket id: ", uid);
       socket.close();
+    }
+  }
+
+  originClosed(id) {
+    console.log(`Shutting down session: ${id}`);
+    if (this.sessions[id]) {
+      this.sessions[id].shutdown();
+      delete this.sessions[id];
+    } else {
+      console.error(`Trying to close invalid session id: ${id}`);
     }
   }
 }
 
-const server = new ProxyServer(ws_server);
+if (!module.parent) {
+  const ws_server = WebSocket.server({port}),
+        server = new RelayServer(ws_server);
+} else {
+  module.exports = {RelayServer};
+}

@@ -24,7 +24,9 @@
  */
 
 const WebSocket = require('ws'),
+      msgpack = require('msgpack-lite'),
       net = require('net'),
+      uuid4 = require('uuid/v4'),
       host = process.argv[2],
       port = process.argv[3],
       id = process.argv[4],
@@ -34,53 +36,82 @@ const WebSocket = require('ws'),
 
 class DestClient {
   constructor(path) {
-    this.queue = [];
-    this.server = net.createServer(this.onUnixConnection.bind(this));
+    this.sockets = {};
+    this.path = path;
+
+    this.web_socket = new WebSocket(url);
+    this.web_socket.on('open', () => this.createUnixSocket(this.path));
+    this.web_socket.on('close', () => {
+      throw new Error("Remote host closed connection");
+    });
+  }
+
+  createUnixSocket(path) {
+    console.log("Websocket connected, opening unix socket");
+
+    this.server = net.createServer((sock) => this.onUnixConnection(sock));
     this.server.on('error', console.error.bind(console));
     this.server.listen(path, () => {
       console.log(`server bound to: ${this.server.address()}`);
     });
-   }
+  }
+
+  send(payload) {
+    this.web_socket.send(msgpack.encode(payload));
+  }
 
   onUnixConnection(unix_socket) {
-    console.log("New unix socket opened");
+    const uid = uuid4();
+    console.log("New unix socket opened:", uid);
 
-    this.unix_socket = unix_socket;
-    this.web_socket = new WebSocket(url);
-    this.start = false;
+    this.sockets[uid] = unix_socket;
+    this.send({type: "open", id: uid, token});
 
-    this.web_socket.on('open', () => {
-      this.ws_start = true;
-
-      while (this.queue.length) {
-        this.web_socket.send(this.queue.shift());
-      }
-    });
-
-    this.web_socket.on('close', () => {
-      throw new Error("Remote host closed connection, exiting");
-    });
-
-    this.web_socket.on('message', this.onMessage.bind(this));
-    this.unix_socket.on('data', this.onData.bind(this));
+    unix_socket.on('data', (data) => this.onUnixData(data, uid));
+    unix_socket.on('end', (uid) => this.closeSocket(uid));
   }
 
   onMessage(data) {
     console.log("Websocket message");
-    // TODO: forward to local unix socket.
-    this.unix_socket.write(data);
+
+    const decoded = msgpack.decode(data);
+
+    switch (decoded.type) {
+      case "close":
+        this.closeSocket(decoded.uid);
+        break;
+      case "data":
+        this.onWebSocketData(decoded.data, decoded.uid);
+        break;
+    }
   }
 
-  onData(data) {
-    console.log("Unix data");
+  onWebSocketData(data, uid) {
+    const maybe_socket = this.sockets[uid];
 
-    if (this.ws_start) {
-      this.web_socket.send(data);
+    if (maybe_socket) {
+      const socket = maybe_socket;
+      socket.write(data);
     } else {
-      this.queue.push(data);
+      console.error(`Trying to write to invalid socket: ${uid}`);
     }
+  }
+
+  onUnixData(data, id) {
+    if (this.sockets[id]) {
+      this.send({type: "data", data, id});
+    } else {
+      console.error(`Trying to forward invalid socket id ${id}`);
+    }
+  }
+
+  closeSocket(id) {
+    this.send({type: "close", id});
+    delete this.sockets[id];
   }
 }
 
-
-const client = new DestClient(local_unix);
+// Entry point for script.
+if (!module.parent) {
+  const client = new DestClient(local_unix);
+}
