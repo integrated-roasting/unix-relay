@@ -33,9 +33,11 @@ const WebSocket = require('ws'),
       url = `ws://${host}:${port}?mode=origin&token=${token}`;
 
 class OriginClient {
-  constructor(socket) {
-    this.session_id = null;
+  constructor(socket, connect, token) {
     this.web_socket = socket;
+    this.connect = connect;
+    this.token = token;
+    this.session_id = null;
     this.dest_sockets = {};
 
     this.web_socket.on('open', function () {
@@ -104,37 +106,40 @@ class OriginClient {
     // TODO: check simulatneous connection limit.
 
     if (this.dest_sockets[id]) {
-      console.error(`Dest socket ${id} already open`);
+      console.error(`Dest socket ${id} already open, shutting down.`);
       this.send({type: "close", id});
+      return;
     }
 
-    if (given_token == token) {
-      const sock = net.connect(path);
+    if (given_token == this.token) {
+      const sock = this.connect(path);
       this.dest_sockets[id] = sock;
       sock.on('data', (data) => this.onUnixData(data, id));
-      sock.on('end', () => this.closeSocket(id));
-      sock.on('error', () => this.closeSocket(id));
+      sock.on('end', () => this.closeSocket(id, true));
+      sock.on('close', () => this.closeSocket(id, true));
+      sock.on('error', () => this.closeSocket(id, true));
     } else {
-      console.error(`A client tried to connect with invalid token: ${token}`);
+      console.error(`A client tried to connect with invalid token: ${this.token}`);
       this.send({type: "close", id});
     }
   }
 
-  closeSocket(id) {
+  closeSocket(id, ack) {
     console.log(`Closing connection for dest id ${id}`);
 
     const maybe_sock = this.dest_sockets[id];
     if (maybe_sock) {
+      // Remove socket from list working set, so we no longer handle it.
+      delete this.dest_sockets[id];
       const sock = maybe_sock;
 
       // Actually close the socket on our end.
       maybe_sock.close();
 
-      // Tell server we won't accept any more data from this socket.
-      this.send({type: "close", id});
-
-      // Remove socket from list working set, so we no longer handle it.
-      delete this.dest_sockets[id];
+      if (ack) {
+        // Tell server we won't accept any more data from this socket.
+        this.send({type: "close", id});
+      }
     } else {
       console.error("Already closed");
     }
@@ -142,5 +147,7 @@ class OriginClient {
 }
 
 if (!module.parent) {
-  const client = new OriginClient(new WebSocket(url));
+  const client = new OriginClient(new WebSocket(url), net.connect, token);
+} else {
+  module.exports = {OriginClient};
 }
