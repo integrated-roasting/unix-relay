@@ -1,11 +1,23 @@
 const assert = require('assert'),
       msgpack = require('msgpack-lite'),
+      net = require('net'),
+      sinon  = require('sinon'),
+      ws = require('ws'),
       dest = require('../dest.js'),
       mocks = require('./mocks.js'),
       origin = require('../origin.js'),
       server = require('../server.js');
 
 describe('everything', function () {
+
+  beforeEach(function () {
+    this.clock = sinon.useFakeTimers();
+  });
+
+  afterEach(function() {
+    this.clock.restore();
+  });
+
   it("should all work together", function () {
     const ws_server = new mocks.Server(),
           origin_client_ws = new mocks.WebSocket(),

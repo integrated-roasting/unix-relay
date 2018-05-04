@@ -1,9 +1,19 @@
 const assert = require('assert'),
       msgpack = require('msgpack-lite'),
+      sinon = require('sinon'),
       mocks = require('./mocks.js'),
       server = require('../server.js');
 
 describe('server', function () {
+
+  beforeEach(function () {
+    this.clock = sinon.useFakeTimers();
+  });
+
+  afterEach(function() {
+    this.clock.restore();
+  });
+
   it("should accept new connections", function () {
     const ws_server = new mocks.Server(),
           mock_origin_socket = new mocks.WebSocket(),
@@ -38,7 +48,6 @@ describe('server', function () {
     assert.equal(mock_origin_socket.is_open, false);
     assert.equal(mock_dest_socket.is_open, false);
   });
-
 
   it("should disconnect origin if dest disconnects", function () {
     const ws_server = new mocks.Server(),
