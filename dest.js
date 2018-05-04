@@ -111,7 +111,6 @@ class DestClient {
   }
 
   closeSocket(id, ack) {
-    console.log("XXX:", ack);
     const maybe_socket = this.sockets[id];
 
     if (maybe_socket) {

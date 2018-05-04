@@ -62,7 +62,14 @@ class WebSocket extends EventEmitter {
     } else {
       this.buffer = data;
     }
+
+    this.emit('send', this.buffer);
   };
+
+  pair(other) {
+    other.on('send', (data) => this.mockMessage(data));
+    this.on('send', (data) => other.mockMessage(data));
+  }
 
   close() {
     this.mockClose();
