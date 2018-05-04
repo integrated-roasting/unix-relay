@@ -134,7 +134,7 @@ class OriginClient {
       const sock = maybe_sock;
 
       // Actually close the socket on our end.
-      maybe_sock.close();
+      maybe_sock.end();
 
       if (ack) {
         // Tell server we won't accept any more data from this socket.
@@ -147,7 +147,10 @@ class OriginClient {
 }
 
 if (!module.parent) {
-  const client = new OriginClient(new WebSocket(url), net.connect, token);
+  const client = new OriginClient(
+    new WebSocket(url),
+    net.createConnection,
+    token);
 } else {
   module.exports = {OriginClient};
 }

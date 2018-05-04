@@ -27,7 +27,7 @@ const  http = require('http'),
        msgpack = require('msgpack-lite'),
        url = require('url'),
        uuid4 = require('uuid/v4'),
-       ws = require('ws'),
+       WebSocket = require('ws'),
        port = process.env.HTTP_PORT || 80;
 
 class RelaySession {
@@ -124,7 +124,7 @@ class RelayServer {
 }
 
 if (!module.parent) {
-  const ws_server = WebSocket.server({port}),
+  const ws_server = new WebSocket.Server({port}),
         server = new RelayServer(ws_server);
 } else {
   module.exports = {RelayServer};

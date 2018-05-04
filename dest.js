@@ -118,7 +118,7 @@ class DestClient {
         this.send({type: "close", id});
       }
       delete this.sockets[id];
-      maybe_socket.close();
+      maybe_socket.end();
     }
   }
 }
@@ -128,7 +128,7 @@ if (!module.parent) {
   const client = new DestClient(
     local_unix,
     new WebSocket(url),
-    new net.createServer,
+    net.createServer,
     token);
 } else {
   module.exports = {DestClient};
