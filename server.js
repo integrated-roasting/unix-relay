@@ -30,16 +30,40 @@ const  http = require('http'),
        WebSocket = require('ws'),
        port = process.env.HTTP_PORT || 80;
 
+
 class RelaySession {
-  constructor (origin, token) {
+  constructor (origin, token, onShutdown) {
     this.origin = origin;
     this.token = token;
+    this.onShutdown = onShutdown;
+    // Handle socket closing.
+    this.origin.on('close', () => this.shutdown());
   }
 
   startForwarding(dest) {
+    const handler = (err) => {
+      if (err) {
+        console.log(err);
+        this.shutdown();
+      }
+    };
+
+    const writer = (sock) => {
+      return (data) => {
+        try {
+          sock.send(data, handler);
+        } catch (err) {
+          handler(err);
+        }
+      }
+    }
+
     this.dest = dest;
-    this.origin.on('message', (data) => dest.send(data));
-    this.dest.on('message', (data) => this.origin.send(data));
+    this.dest.on('close', () => this.shutdown());
+    this.dest.on('error', () => this.shutdown());
+
+    this.origin.on('message', writer(this.dest));
+    this.dest.on('message', writer(this.origin));
   }
 
   shutdown() {
@@ -50,6 +74,8 @@ class RelaySession {
     if (this.origin.readyState === "OPEN") {
       this.origin.close();
     }
+
+    this.onShutdown && this.onShutdown();
   }
 
   running() {
@@ -63,8 +89,34 @@ class RelayServer {
     ws_server.on('connection', this.newConnection.bind(this));
   }
 
+  heartBeat(socket) {
+    var last_seen = Date.now();
+
+    socket.on("pong", () => {
+      last_seen = Date.now();
+    });
+
+    function check() {
+      if ((Date.now() - last_seen) > 5000) {
+        console.log("Ping timeout");
+        socket.terminate();
+      } else {
+        try {
+          socket.ping();
+          setTimeout(check, 1000);
+        } catch (err) {
+          socket.terminate();
+        }
+      }
+    }
+
+    check();
+  }
+
   newConnection(socket, req) {
     const location = url.parse(req.url, true);
+
+    this.heartBeat(socket);
 
     switch(location.query.mode) {
       case "origin":
@@ -78,18 +130,22 @@ class RelayServer {
 
   newOriginConnection(socket, params) {
     const uid = uuid4(),
-          session = new RelaySession(socket, params.token);
+          session = new RelaySession(
+            socket,
+            params.token,
+            () => this.shutdown(uid));
 
     console.log("Creating new connection:", uid);
 
     this.sessions[uid] = session;
 
-    // Notify origin client of session id.
-    socket.send(msgpack.encode({type: "start", id: uid}));
-
-    // Handle socket closing.
-    socket.on('close', () => this.originClosed(uid));
-    socket.on('error', () => this.originClosed(uid));
+    try {
+      // Notify origin client of session id.
+      socket.send(msgpack.encode({type: "start", id: uid}));
+    } catch (err) {
+      console.error("New socket was DoA");
+      delete this.sessions[uid];
+    }
   }
 
   newDestConnection(socket, params) {
@@ -104,18 +160,15 @@ class RelayServer {
       }
       console.error("Forwarding for connection:", uid);
       session.startForwarding(socket);
-      socket.on('close', () => session.shutdown());
-      socket.on('error', () => session.shutdown());
     } else {
       console.error("Invalid socket id: ", uid);
       socket.close();
     }
   }
 
-  originClosed(id) {
+  shutdown(id) {
     console.log(`Shutting down session: ${id}`);
     if (this.sessions[id]) {
-      this.sessions[id].shutdown();
       delete this.sessions[id];
     } else {
       console.error(`Trying to close invalid session id: ${id}`);

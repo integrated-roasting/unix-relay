@@ -106,18 +106,19 @@ class OriginClient {
     // TODO: check simulatneous connection limit.
 
     if (this.dest_sockets[id]) {
-      console.error(`Dest socket ${id} already open, shutting down.`);
+      console.error(`Dest socket ${id} already open.`);
       this.send({type: "close", id});
       return;
     }
 
     if (given_token == this.token) {
+      console.log(path);
       const sock = this.connect(path);
       this.dest_sockets[id] = sock;
       sock.on('data', (data) => this.onUnixData(data, id));
       sock.on('end', () => this.closeSocket(id, true));
       sock.on('close', () => this.closeSocket(id, true));
-      sock.on('error', () => this.closeSocket(id, true));
+      sock.on('error', (err) => console.error(err));
     } else {
       console.error(`A client tried to connect with invalid token: ${this.token}`);
       this.send({type: "close", id});

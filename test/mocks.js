@@ -66,9 +66,18 @@ class WebSocket extends EventEmitter {
     this.emit('send', this.buffer);
   };
 
+  ping() {
+    console.log("simulate ping");
+    setTimeout(() => this.emit("pong"), 100);
+  }
+
   pair(other) {
     other.on('send', (data) => this.mockMessage(data));
     this.on('send', (data) => other.mockMessage(data));
+  }
+
+  terminate() {
+    this.mockClose();
   }
 
   close() {
@@ -129,6 +138,10 @@ class File extends EventEmitter {
     }
 
     this.emit('write', data);
+  }
+
+  end() {
+    this.mockClose();
   }
 
   close() {
