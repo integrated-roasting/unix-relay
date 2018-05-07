@@ -3,31 +3,32 @@
 This project allows relaying local unix sockets between
 internet-connected hosts via an intermediary server. WebSocket is used
 for transport. While it is possible to do something similar with
-socat, Unlike socat, this project is intended to be used in a
-production setting, with the intermediary server brokering connections
-between multiple clients on the same port.
+socat, Unlike socat, this project is intended to be used at a larger
+scale as part of production infrastructure. The server brokers
+connections between multiple clients on the same port, each session
+capable of multiplexing multiple unix socket connections.
 
 ## Motivation
 
 The primary use-case is to allow ssh agent forwarding to remote hosts
 and / or inside docker containers. This allows local ssh keys, unique
 to each developer, to be used for authentication during remote
-builds. The problem of build secret managment is thus reduced to local
-management of ssh keys.
+builds. The problem of build secret managment is thus reduced to ssh
+keys management.
 
 Unlike with traditional ssh agent forwarding, the socket need not be
-forwarded across each intermediate host when multiple ssh connections
-are chained together. The ssh agent socket can be forwarded from the
-origninating agent to any host which can see the intermediate relay
-server.
+forwarded across each intermediate hosts, and there need not be a
+chain of ssh connections between hosts.  The ssh agent socket can be
+forwarded from the origninating agent to any host which can see the
+relay server. This can be either good or bad depending on your
+networking environment.
 
 ## Requirements
 
 The only networking requirement is that the intermediary be visible to
 both hosts, and that websocket or plain TCP communication
 communication be possible (i.e. intermediate proxies don't mess with
-the WebSocket protocol). The easiest way to ensure that intermediate
-proxies don't interfere is to wrap the WebSocket connections with ssl.
+the WebSocket protocol).
 
 Software requirements: NodeJS 6 or higher.
 
@@ -51,23 +52,28 @@ random uuid that identifies the session. The _origin client_
 outputs the uuid, then waits until a _start token_ is recieved,
 indicating that a remote connection has been initiated.
 
-Starting the _dest client_ immediately creates a new local unix socket
-(_dest socket_) on the _destination host_, and starts listening for
+The _dest client_ creates a new local unix socket, and listens for
 new connections on said socket. When an incoming connection is received,
 a new WebSocket connection is made to the _relay_, this time in
-_destination mode_. If the socket id and _auth token_ match, then the
-start token is sent to the _origin client_, and the server begins
-forwarding data bidirectionally betwen the _origin WebSocket_ and the
-_destination WebSocket_. This continues until either end closes the
-connection, at which point session ends.
+_destination mode_. If the socket id and _auth token_ match, the
+server begins forwarding data bidirectionally betwen the _origin
+WebSocket_ and the _destination WebSocket_. This continues until
+either end closes the connection, at which point session ends.
+
+The origin and destination clients can multiplex multiple unix socket
+connections over a single websocket. This is done without the direct
+involvment of the relay server.
 
 ## Current Limitations
 
-- Only one connection is forwarded per session.
-- Only one connection per session may be active at a time.
 - The _origin socket_ must exist, and something must be listening on
   it.
 - If the _destination socket_ exists, nothing should be listening on it.
+- Doesn't use SSL internally, you need another tool like HAProxy to
+  terminate SSL.
+- While the server isn't involved in multiplexing each socket connection,
+  it can see all the traffic passing between clients. This could be a
+  security concern in some environments.
 
 ## Installation
 
@@ -102,6 +108,8 @@ This is done so that the whole invocation can be wrapped in `eval`
 like so, similar to the manner in which ssh-agent is often used:
 
     eval "$(node origin.js ...)"
+
+**Note** Currently, too much stuff is printed by default to eval directly.
 
 ## Start the dest client
 
